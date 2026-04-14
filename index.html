@@ -7,6 +7,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script async src="//busuanzi.icodeq.com/busuanzi/2.3/busuanzi.pure.mini.js"></script>
     <style>
         :root {
             --bg-primary: #0d1117;
@@ -252,6 +253,64 @@
 
         [data-theme="light"] .help-panel .close-help:hover {
             color: rgba(0, 0, 0, 0.8);
+        }
+
+        .stats-widget {
+            position: fixed;
+            bottom: 16px;
+            left: 16px;
+            display: flex;
+            gap: 12px;
+            z-index: 1000;
+        }
+
+        .stats-item {
+            background: var(--bg-secondary);
+            backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+            -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 8px 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text-primary);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transition: all 0.3s ease;
+        }
+
+        .stats-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+            border-color: var(--accent-primary);
+        }
+
+        .stats-icon {
+            font-size: 16px;
+        }
+
+        .stats-label {
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+
+        .stats-value {
+            color: var(--accent-primary);
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .stats-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-primary);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
         }
 
         header {
@@ -1449,6 +1508,7 @@
 
         .auto-sample-row {
             margin-top: 12px;
+            margin-bottom: 30px;
             padding: 10px 12px;
             background: var(--bg-tertiary);
             border: 1px solid var(--border-color);
@@ -2484,6 +2544,19 @@
     <div class="help-panel" id="helpPanel">
         <button class="close-help" id="closeHelp">×</button>
         <div id="helpContent"></div>
+    </div>
+
+    <div class="stats-widget">
+        <div class="stats-item" title="累计访问次数">
+            <span class="stats-icon">👁</span>
+            <span class="stats-label">访问</span>
+            <span class="stats-value" id="busuanzi_value_site_pv">-</span>
+        </div>
+        <div class="stats-item" title="在线用户数">
+            <span class="stats-dot"></span>
+            <span class="stats-label">访客</span>
+            <span class="stats-value" id="busuanzi_value_site_uv">-</span>
+        </div>
     </div>
 
     <div class="container">
@@ -7018,4 +7091,4 @@
     </script>
 </body>
 </html>
-  
+

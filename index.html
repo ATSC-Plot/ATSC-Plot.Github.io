@@ -7088,7 +7088,68 @@
             activeTab.chart.update();
         }
     </script>
-    <script async src="https://busuanzi.icodeq.com/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <script>
+        (function() {
+            const PV_KEY = 'atsc_plot_total_visits';
+            const UV_KEY = 'atsc_plot_online_users';
+            const HEARTBEAT_KEY = 'atsc_plot_heartbeat_';
+            const HEARTBEAT_INTERVAL = 3000;
+            const TIMEOUT = 10000;
+
+            let userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+            let totalVisits = 0;
+
+            function initTotalVisits() {
+                let total = parseInt(localStorage.getItem(PV_KEY) || '0');
+                total++;
+                localStorage.setItem(PV_KEY, total.toString());
+                totalVisits = total;
+                return total;
+            }
+
+            function updateOnlineCount() {
+                const now = Date.now();
+                
+                localStorage.setItem(HEARTBEAT_KEY + userId, now.toString());
+
+                let onlineCount = 0;
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && key.startsWith(HEARTBEAT_KEY)) {
+                        const timestamp = parseInt(localStorage.getItem(key) || '0');
+                        if (now - timestamp < TIMEOUT) {
+                            onlineCount++;
+                        } else {
+                            localStorage.removeItem(key);
+                        }
+                    }
+                }
+
+                return onlineCount;
+            }
+
+            function updateDisplay() {
+                const pvEl = document.getElementById('busuanzi_value_site_pv');
+                const uvEl = document.getElementById('busuanzi_value_site_uv');
+                
+                if (pvEl) {
+                    pvEl.textContent = totalVisits.toLocaleString();
+                }
+                
+                if (uvEl) {
+                    uvEl.textContent = updateOnlineCount().toLocaleString();
+                }
+            }
+
+            window.addEventListener('beforeunload', function() {
+                localStorage.removeItem(HEARTBEAT_KEY + userId);
+            });
+
+            initTotalVisits();
+            updateDisplay();
+            setInterval(updateDisplay, HEARTBEAT_INTERVAL);
+        })();
+    </script>
 </body>
 </html>
 

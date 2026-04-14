@@ -7,7 +7,21 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-    <script src="https://cdn.bootcdn.net/ajax/libs/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <script async src="https://busuanzi.icodeq.com/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <script>
+        window.onload = function() {
+            setTimeout(function() {
+                var pv = document.getElementById('busuanzi_value_site_pv');
+                var uv = document.getElementById('busuanzi_value_site_uv');
+                if (pv && (pv.textContent === '-' || pv.textContent === '')) {
+                    pv.textContent = '1';
+                }
+                if (uv && (uv.textContent === '-' || uv.textContent === '')) {
+                    uv.textContent = '1';
+                }
+            }, 2000);
+        };
+    </script>
     <style>
         :root {
             --bg-primary: #0d1117;

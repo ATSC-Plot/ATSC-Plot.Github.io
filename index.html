@@ -7,47 +7,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-    <script>
-        const statsWidget = {
-            namespace: 'atsc-plot',
-            key: 'visitors',
-            interval: null,
-
-            async init() {
-                this.updateVisitorCount();
-                this.startUpdateInterval();
-            },
-
-            async updateVisitorCount() {
-                try {
-                    const response = await fetch(`https://api.countapi.xyz/hit/${this.namespace}/${this.key}`);
-                    const data = await response.json();
-                    const count = data.value || 0;
-                    this.updateDisplay(count);
-                } catch (e) {
-                    console.warn('CountAPI error:', e);
-                    this.updateDisplay('-');
-                }
-            },
-
-            startUpdateInterval() {
-                this.interval = setInterval(() => {
-                    this.updateVisitorCount();
-                }, 30000);
-            },
-
-            updateDisplay(count) {
-                const totalEl = document.getElementById('visitorCount');
-                if (totalEl) {
-                    totalEl.textContent = typeof count === 'number' ? count.toLocaleString() : count;
-                }
-            }
-        };
-
-        window.addEventListener('DOMContentLoaded', () => {
-            statsWidget.init();
-        });
-    </script>
+    <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
     <style>
         :root {
             --bg-primary: #0d1117;
@@ -2590,7 +2550,12 @@
         <div class="stats-item" title="累计访问次数">
             <span class="stats-icon">👁</span>
             <span class="stats-label">访问</span>
-            <span class="stats-value" id="visitorCount">-</span>
+            <span class="stats-value" id="busuanzi_value_site_pv">-</span>
+        </div>
+        <div class="stats-item" title="独立访客数">
+            <span class="stats-dot"></span>
+            <span class="stats-label">访客</span>
+            <span class="stats-value" id="busuanzi_value_site_uv">-</span>
         </div>
     </div>
 

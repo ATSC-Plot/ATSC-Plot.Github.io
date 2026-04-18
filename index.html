@@ -401,6 +401,9 @@
                 flex: 0 0 auto;
                 text-align: left;
             }
+            .control-panel {
+                height: 280px;
+            }
         }
 
         .control-panel {
@@ -1430,7 +1433,7 @@
         }
 
         .chart-width-input {
-            width: 120px;
+            width: 60px;
             text-align: center;
         }
 
@@ -2192,6 +2195,43 @@
             flex-direction: column;
         }
 
+        @media (max-width: 768px) {
+            .chart-container-with-indicator {
+                flex-direction: column;
+                gap: 12px;
+            }
+            .chart-container-with-indicator .indicator-panel {
+                width: 100%;
+                max-height: none;
+                flex-shrink: 0;
+                align-self: stretch;
+            }
+            .chart-container-with-indicator .chart-wrapper {
+                width: 100%;
+            }
+            .chart-container-with-indicator .indicator-list {
+                flex-direction: row;
+                flex-wrap: nowrap;
+                gap: 8px;
+            }
+            .chart-container-with-indicator .indicator-item {
+                flex: 1;
+                flex-direction: column;
+                padding: 8px 4px;
+                min-width: 0;
+                font-size: 10px;
+            }
+            .chart-container-with-indicator .indicator-title {
+                font-size: 11px;
+            }
+            .chart-container-with-indicator .indicator-range {
+                font-size: 9px;
+            }
+            .chart-container-with-indicator .indicator-color-bar {
+                height: 6px;
+            }
+        }
+
         .indicator-title {
             font-size: 13px;
             font-weight: 600;
@@ -2548,8 +2588,7 @@
 
     <div class="stats-widget">
         <div class="stats-item" title="累计访问次数">
-            <span class="stats-icon">👁</span>
-            <span class="stats-label">访问量</span>
+            <span class="stats-label">访问量：</span>
             <span class="stats-value" id="busuanzi_value_site_pv">-</span>
         </div>
     </div>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>酸碱滴定S型曲线绘图程序（ATSC-Plot ）4.0.1 </title>
+    <title>酸碱滴定S型曲线绘图程序（ATSC-Plot ）5.0.0 </title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
@@ -1432,6 +1432,18 @@
             border: 1px dashed var(--border-color);
         }
 
+        .distribution-chart-wrapper {
+            position: relative;
+            height: 280px;
+            margin-top: 12px;
+            margin-bottom: 16px;
+            background: var(--chart-bg, #ffffff);
+            border-radius: 12px;
+            padding: 10px;
+            width: 100%;
+            border: 1px dashed var(--border-color);
+        }
+
         .chart-width-input {
             width: 60px;
             text-align: center;
@@ -1453,9 +1465,20 @@
             --chart-bg: #0b1220;
         }
 
+        [data-theme="dark"] .distribution-chart-wrapper {
+            --chart-bg: #0b1220;
+        }
+
         @media (min-width: 900px) {
             .charts-area {
                 --chart-custom-width: 100%;
+            }
+
+            .chart-stack.custom-width {
+                width: var(--chart-custom-width) !important;
+                flex: 0 0 var(--chart-custom-width) !important;
+                margin-left: auto;
+                margin-right: auto;
             }
 
             .chart-wrapper.custom-width {
@@ -1633,7 +1656,8 @@
             background: rgba(88,166,255,0.08);
         }
 
-        .chart-wrapper canvas {
+        .chart-wrapper canvas,
+        .distribution-chart-wrapper canvas {
             border-radius: 8px;
         }
 
@@ -2173,6 +2197,12 @@
             min-width: 0;
         }
 
+        .chart-container-with-indicator .chart-stack {
+            flex: 1;
+            min-width: 0;
+            width: 100%;
+        }
+
         .chart-container-with-indicator .chart-wrapper.custom-width {
             flex: 0 0 var(--chart-custom-width) !important;
         }
@@ -2190,9 +2220,11 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.15);
             z-index: 10;
             flex-shrink: 0;
-            align-self: stretch;
+            align-self: flex-start;
             display: flex;
             flex-direction: column;
+            height: 420px;
+            max-height: 420px;
         }
 
         @media (max-width: 768px) {
@@ -2202,6 +2234,7 @@
             }
             .chart-container-with-indicator .indicator-panel {
                 width: 100%;
+                height: auto;
                 max-height: none;
                 flex-shrink: 0;
                 align-self: stretch;
@@ -3384,6 +3417,143 @@
             return contribution;
         }
 
+        function calcAcidDistributionFractions(K_A, pH) {
+            const m = Array.isArray(K_A) ? K_A.length : 0;
+            if (m === 0) return [];
+            const h = Math.pow(10, -pH);
+            const Ka = K_A.map(pk => Math.pow(10, -pk));
+            const terms = [];
+            for (let i = 0; i <= m; i++) {
+                const product = i === 0 ? 1 : calcProduct(Ka, i);
+                terms.push(product * Math.pow(h, m - i));
+            }
+            const denominator = terms.reduce((sum, value) => sum + value, 0);
+            if (!Number.isFinite(denominator) || denominator <= 0) {
+                return terms.map(() => 0);
+            }
+            return terms.map(value => value / denominator);
+        }
+
+        function calcBaseDistributionFractions(K_B, pH) {
+            const n = Array.isArray(K_B) ? K_B.length : 0;
+            if (n === 0) return [];
+            const oh = Math.pow(10, pH - pKw);
+            const Kb = K_B.map(pk => Math.pow(10, -pk));
+            const terms = [];
+            for (let i = 0; i <= n; i++) {
+                const product = i === 0 ? 1 : calcProduct(Kb, i);
+                terms.push(product * Math.pow(oh, n - i));
+            }
+            const denominator = terms.reduce((sum, value) => sum + value, 0);
+            if (!Number.isFinite(denominator) || denominator <= 0) {
+                return terms.map(() => 0);
+            }
+            return terms.map(value => value / denominator);
+        }
+
+        function getDistributionColor(index, isPaperStyle) {
+            const isDarkTheme = document.documentElement.getAttribute('data-theme') === 'dark';
+            const colors = isPaperStyle
+                ? ['#000000', '#d62728', '#1f77b4', '#2ca02c', '#9467bd', '#ff7f0e', '#17becf', '#8c564b']
+                : (isDarkTheme
+                    ? ['#ff4d4f', '#40a9ff', '#73d13d', '#b37feb', '#ffa940', '#36cfc9', '#ff85c0', '#fadb14', '#5c7cfa', '#ff7a45']
+                    : ['#d62728', '#0057b8', '#188038', '#7b1fa2', '#e65100', '#00838f', '#c2185b', '#6d4c00', '#3949ab', '#6d4c41']);
+            return colors[index % colors.length];
+        }
+
+        function buildDistributionPhGrid(step = 0.02) {
+            const points = [];
+            const actualStep = Number.isFinite(step) && step > 0 ? step : 0.02;
+            for (let pH = 0; pH <= 14 + actualStep / 2; pH += actualStep) {
+                points.push(Math.min(14, pH));
+            }
+            return points;
+        }
+
+        function getWeakDistributionComponents(cfg) {
+            const collect = (components, sourceLabel) => {
+                return (components || [])
+                    .filter(comp => comp && !comp.isStrong && Array.isArray(comp.kValues) && comp.kValues.length > 0)
+                    .map(comp => ({ ...comp, sourceLabel }));
+            };
+            return [
+                ...collect(cfg.solution?.components, '待测液'),
+                ...collect(cfg.titrant?.components, '标准液')
+            ];
+        }
+
+        function buildDistributionDatasets(tab, volumes, phs, isPaperStyle) {
+            if (!tab || !tab.showDistributionFractions) return [];
+            const cfg = tab.generatedParams || config;
+            const weakComponents = getWeakDistributionComponents(cfg);
+            if (weakComponents.length === 0) return [];
+
+            const datasets = [];
+            const pHPoints = buildDistributionPhGrid();
+            weakComponents.forEach((comp, compIndex) => {
+                const speciesCount = comp.kValues.length + 1;
+                for (let speciesIndex = 0; speciesIndex < speciesCount; speciesIndex++) {
+                    const data = pHPoints.map(pH => {
+                        const fractions = comp.type === 'acid'
+                            ? calcAcidDistributionFractions(comp.kValues, pH)
+                            : calcBaseDistributionFractions(comp.kValues, pH);
+                        const alpha = fractions[speciesIndex] || 0;
+                        return { x: pH, y: Math.max(0, Math.min(1, alpha)) };
+                    });
+                    const colorIndex = datasets.length + compIndex;
+                    const componentName = comp.displayName || comp.name || '弱酸碱';
+                    datasets.push({
+                        label: `${comp.sourceLabel}-${componentName} α${speciesIndex}`,
+                        data,
+                        isDistributionDataset: true,
+                        borderColor: getDistributionColor(colorIndex, isPaperStyle),
+                        backgroundColor: 'transparent',
+                        fill: false,
+                        tension: isPaperStyle ? 0.18 : 0.32,
+                        pointRadius: 0,
+                        pointHoverRadius: 3,
+                        pointHitRadius: 0,
+                        borderWidth: isPaperStyle ? 1.6 : 2,
+                        borderDash: speciesIndex === 0 ? [6, 4] : (speciesIndex % 2 === 0 ? [2, 3] : [10, 4, 2, 4]),
+                        borderJoinStyle: 'round',
+                        borderCapStyle: 'round'
+                    });
+                }
+            });
+            return datasets;
+        }
+
+        function buildDistributionIntersections(tab) {
+            if (!tab || !tab.showDistributionFractions) return [];
+            const cfg = tab.generatedParams || config;
+            const weakComponents = getWeakDistributionComponents(cfg);
+            const points = [];
+            let colorIndex = 0;
+            weakComponents.forEach((comp, compIndex) => {
+                const componentName = comp.displayName || comp.name || '弱酸碱';
+                comp.kValues.forEach((pk, idx) => {
+                    const pH = comp.type === 'acid' ? pk : (pKw - pk);
+                    if (!Number.isFinite(pH) || pH < 0 || pH > 14) {
+                        colorIndex++;
+                        return;
+                    }
+                    const fractions = comp.type === 'acid'
+                        ? calcAcidDistributionFractions(comp.kValues, pH)
+                        : calcBaseDistributionFractions(comp.kValues, pH);
+                    const alpha = fractions[idx] ?? fractions[idx + 1] ?? 0;
+                    points.push({
+                        key: `dist-${compIndex}-${idx}`,
+                        label: `${comp.sourceLabel}-${componentName} α${idx}/α${idx + 1}`,
+                        pH,
+                        alpha: Math.max(0, Math.min(1, alpha)),
+                        color: getDistributionColor(colorIndex + compIndex, chartStyle === 'paper')
+                    });
+                    colorIndex++;
+                });
+            });
+            return points;
+        }
+
         function combinedEquation(pH, params) {
             const { titrationType, solution, titrant, V } = params;
             const V0 = solution.V0;
@@ -3702,6 +3872,7 @@
                 const autoNameCurrent = config.curveName;
                 config.curveName = userName && userName !== '滴定曲线1' ? userName : autoNameCurrent || '滴定曲线1';
                 nameInput.value = config.curveName;
+                tab.generatedParams = snapshotParamsFromConfig(config);
 
                 // 计算每个体积点的pH值
                 const step = config.volumeIncrement;
@@ -3725,6 +3896,7 @@
                 // 更新图表和统计信息
                 tab.fixedMarks = [];
                 tab.selectedPoint = null;
+                tab.distributionLabelPositions = {};
                 updateChart(tab, tab.volumes, tab.phs, config.curveColor, config.curveStyle);
                 updateStats(tab, tab.volumes, tab.phs);
                 
@@ -3791,6 +3963,9 @@
             if (tab.simpleLabelMode === undefined) tab.simpleLabelMode = false;
             if (tab.showLabel === undefined) tab.showLabel = true;
             if (tab.showDerivative === undefined) tab.showDerivative = false;
+            if (tab.showDistributionFractions === undefined) tab.showDistributionFractions = false;
+            if (tab.generatedParams === undefined) tab.generatedParams = null;
+            if (!tab.distributionLabelPositions) tab.distributionLabelPositions = {};
             if (!Array.isArray(tab.fixedMarks)) tab.fixedMarks = [];
             if (!Array.isArray(tab.volumes)) tab.volumes = [];
             if (!Array.isArray(tab.phs)) tab.phs = [];
@@ -3812,12 +3987,16 @@
                 type,
                 title: `${titlePrefix}${tabCounter - 1}`,
                 chart: null,
+                distributionChart: null,
                 volumes: [],
                 phs: [],
                 showRawPoints: false,
                 simpleLabelMode: false,
                 showLabel: true,
                 showDerivative: false,
+                showDistributionFractions: false,
+                generatedParams: null,
+                distributionLabelPositions: {},
                 selectedPoint: null,
                 fixedMarks: [],
                 volumePickIndices: [],
@@ -3929,6 +4108,8 @@
             if (tabItem) tabItem.remove();
             if (tabPane) tabPane.remove();
             if (removed.chart) removed.chart.destroy();
+            if (removed.distributionChart) removed.distributionChart.destroy();
+            if (removed.derivativeChart) removed.derivativeChart.destroy();
             if (activeTabId === tabId) {
                 const nextTab = chartTabs[index] || chartTabs[index - 1] || chartTabs[0];
                 if (nextTab) {
@@ -3995,8 +4176,13 @@
                         </div>
                     </div>
                     <div class="chart-container-with-indicator">
-                        <div class="chart-wrapper">
-                            <canvas data-role="chart-canvas"></canvas>
+                        <div class="chart-stack">
+                            <div class="chart-wrapper">
+                                <canvas data-role="chart-canvas"></canvas>
+                            </div>
+                            <div class="distribution-chart-wrapper" style="display: none;">
+                                <canvas data-role="distribution-chart-canvas"></canvas>
+                            </div>
                         </div>
                         <div class="indicator-panel">
                             <h3 class="indicator-title">指示剂选择</h3>
@@ -4018,6 +4204,10 @@
                         <label class="control-toggle-item">
                             <input type="checkbox" data-role="label-toggle" checked>
                             <span class="control-toggle-label">显示标签</span>
+                        </label>
+                        <label class="control-toggle-item">
+                            <input type="checkbox" data-role="distribution-toggle">
+                            <span class="control-toggle-label">显示分布分数曲线</span>
                         </label>
                         <label class="control-toggle-item">
                             <input type="checkbox" data-role="derivative-toggle">
@@ -4167,6 +4357,7 @@
             const rawToggle = pane.querySelector('[data-role="raw-toggle"]');
             const simpleToggle = pane.querySelector('[data-role="simple-label-toggle"]');
             const labelToggle = pane.querySelector('[data-role="label-toggle"]');
+            const distributionToggle = pane.querySelector('[data-role="distribution-toggle"]');
             const derivativeToggle = pane.querySelector('[data-role="derivative-toggle"]');
             const clearBtn = pane.querySelector('[data-role="clear-marks"]');
             const downloadBtn = pane.querySelector('[data-role="download"]');
@@ -4185,6 +4376,7 @@
             rawToggle.checked = tab.showRawPoints;
             simpleToggle.checked = tab.simpleLabelMode;
             if (labelToggle) labelToggle.checked = tab.showLabel;
+            if (distributionToggle) distributionToggle.checked = tab.showDistributionFractions || false;
             
             // 一阶导数显示控制
             if (derivativeToggle) {
@@ -4220,6 +4412,14 @@
                 labelToggle.addEventListener('change', () => {
                     tab.showLabel = labelToggle.checked;
                     refreshTabAnnotations(tab);
+                });
+            }
+
+            // 弱酸/弱碱分布分数曲线显示控制
+            if (distributionToggle) {
+                distributionToggle.addEventListener('change', () => {
+                    tab.showDistributionFractions = distributionToggle.checked;
+                    updateChart(tab, tab.volumes, tab.phs, config.curveColor, config.curveStyle);
                 });
             }
             
@@ -4770,26 +4970,64 @@
             const pixelRatio = Math.max(window.devicePixelRatio || 1, isPaperStyle ? 2 : 1);
 
             const datasetPoints = volumes.map((v, idx) => ({ x: v, y: phs[idx] }));
+            const titrationDataset = {
+                label: chartLabels.curveLabel,
+                data: datasetPoints,
+                borderColor: natureColors.line,
+                backgroundColor: natureColors.fill,
+                fill: !isPaperStyle,
+                tension: isPaperStyle ? 0.25 : 0.4,
+                pointRadius: tab.showRawPoints ? (isPaperStyle ? 1.5 : 2) : 0,
+                pointHoverRadius: tab.showRawPoints ? (isPaperStyle ? 3 : 4) : 0,
+                pointHitRadius: tab.showRawPoints ? 8 : 6,
+                borderWidth: isPaperStyle ? 1.5 : 2,
+                borderJoinStyle: 'round',
+                borderCapStyle: 'round',
+                borderDash: style === 'dashed' ? [10, 5] : (style === 'dotted' ? [3, 3] : (style === 'dashdot' ? [10, 3, 3, 3] : []))
+            };
+            const chartScales = {
+                x: {
+                    type: 'linear',
+                    title: {
+                        display: true,
+                        text: chartLabels.xSingle,
+                        color: natureColors.text,
+                        font: { size: isPaperStyle ? 18 : 12, weight: '600' }
+                    },
+                    ticks: {
+                        color: natureColors.textSecondary,
+                        font: { size: isPaperStyle ? 16 : 11 }
+                    },
+                    grid: {
+                        color: natureColors.grid,
+                        drawBorder: true,
+                        lineWidth: 1
+                    }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: chartLabels.y,
+                        color: natureColors.text,
+                        font: { size: isPaperStyle ? 18 : 12, weight: '600' }
+                    },
+                    min: 0,
+                    max: 14,
+                    ticks: {
+                        color: natureColors.textSecondary,
+                        font: { size: isPaperStyle ? 16 : 11 }
+                    },
+                    grid: {
+                        color: natureColors.grid,
+                        drawBorder: true,
+                        lineWidth: 1
+                    }
+                }
+            };
             tab.chart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    datasets: [
-                        {
-                            label: chartLabels.curveLabel,
-                            data: datasetPoints,
-                            borderColor: natureColors.line,
-                            backgroundColor: natureColors.fill,
-                            fill: !isPaperStyle,
-                            tension: isPaperStyle ? 0.25 : 0.4,
-                            pointRadius: tab.showRawPoints ? (isPaperStyle ? 1.5 : 2) : 0,
-                            pointHoverRadius: tab.showRawPoints ? (isPaperStyle ? 3 : 4) : 0,
-                            pointHitRadius: tab.showRawPoints ? 8 : 6,
-                            borderWidth: isPaperStyle ? 1.5 : 2,
-                            borderJoinStyle: 'round',
-                            borderCapStyle: 'round',
-                            borderDash: style === 'dashed' ? [10, 5] : (style === 'dotted' ? [3, 3] : (style === 'dashdot' ? [10, 3, 3, 3] : []))
-                        }
-                    ]
+                    datasets: [titrationDataset]
                 },
                 options: {
                     responsive: true,
@@ -4814,12 +5052,141 @@
                         annotation: { annotations: {} }
                     },
                     onClick: null,
+                    scales: chartScales
+                }
+            });
+            refreshTabAnnotations(tab);
+            if (tab.showDistributionFractions) {
+                updateDistributionChart(tab);
+            } else {
+                hideDistributionChart(tab);
+            }
+            if (tab.showDerivative) {
+                updateDerivativeChart(tab, volumes, phs, color, style);
+            }
+        }
+
+        function getDistributionLabelDefaultOffset(point, index) {
+            const preferRight = point.pH <= 7;
+            const xAdjust = preferRight ? 58 : -58;
+            return { xAdjust, yAdjust: 0 };
+        }
+
+        function buildDistributionIntersectionAnnotations(intersections, isPaperStyle, customPositions = {}) {
+            const annotations = {};
+            intersections.forEach((point, index) => {
+                const key = point.key || `dist-${index}`;
+                const labelText = `(${point.pH.toFixed(2)}, ${point.alpha.toFixed(2)})`;
+                const offset = customPositions[key] || getDistributionLabelDefaultOffset(point, index);
+                annotations[`${key}-point`] = {
+                    type: 'point',
+                    xValue: point.pH,
+                    yValue: point.alpha,
+                    backgroundColor: point.color,
+                    borderColor: '#ffffff',
+                    borderWidth: 2,
+                    radius: isPaperStyle ? 4 : 5
+                };
+                annotations[`${key}-label`] = {
+                    type: 'label',
+                    xValue: point.pH,
+                    yValue: point.alpha,
+                    content: labelText,
+                    color: isPaperStyle ? point.color : '#ffffff',
+                    backgroundColor: isPaperStyle ? 'rgba(255,255,255,0.82)' : point.color + 'cc',
+                    borderColor: point.color,
+                    borderWidth: 1,
+                    borderRadius: 6,
+                    font: { size: isPaperStyle ? 13 : 11, weight: '600' },
+                    padding: { top: 4, bottom: 4, left: 8, right: 8 },
+                    xAdjust: offset.xAdjust,
+                    yAdjust: offset.yAdjust,
+                    position: 'center'
+                };
+            });
+            return annotations;
+        }
+
+        function updateDistributionChart(tab) {
+            if (!tab || tab.type !== 'single') return;
+            const pane = getTabContent(tab);
+            if (!pane) return;
+            const wrapper = pane.querySelector('.distribution-chart-wrapper');
+            const canvas = pane.querySelector('[data-role="distribution-chart-canvas"]');
+            if (!wrapper || !canvas) return;
+
+            const isPaperStyle = chartStyle === 'paper';
+            const isDarkTheme = document.documentElement.getAttribute('data-theme') === 'dark';
+            const themeColors = getThemeColors();
+            const natureColors = isPaperStyle ? {
+                grid: isDarkTheme ? 'rgba(255, 255, 255, 0.18)' : '#e5e5e5',
+                text: isDarkTheme ? '#e5e7eb' : '#000000',
+                textSecondary: isDarkTheme ? '#cbd5e1' : '#666666'
+            } : {
+                grid: themeColors.gridColor,
+                text: themeColors.textPrimary,
+                textSecondary: themeColors.textSecondary
+            };
+            const distributionDatasets = buildDistributionDatasets(tab, tab.volumes, tab.phs, isPaperStyle);
+            if (!tab.showDistributionFractions || distributionDatasets.length === 0) {
+                hideDistributionChart(tab);
+                return;
+            }
+
+            wrapper.style.display = 'block';
+            if (tab.distributionChart) {
+                tab.distributionChart.destroy();
+            }
+
+            const intersections = buildDistributionIntersections(tab);
+            const pixelRatio = Math.max(window.devicePixelRatio || 1, isPaperStyle ? 2 : 1);
+            tab.distributionChart = new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    datasets: distributionDatasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    devicePixelRatio: pixelRatio,
+                    interaction: {
+                        intersect: false,
+                        mode: 'nearest'
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                color: natureColors.text,
+                                font: { size: isPaperStyle ? 14 : 11 },
+                                boxWidth: 12,
+                                padding: 14
+                            }
+                        },
+                        tooltip: {
+                            enabled: true,
+                            callbacks: {
+                                title: items => items && items.length ? items[0].dataset.label : '',
+                                label: item => {
+                                    const pH = item.parsed?.x;
+                                    const alpha = item.parsed?.y;
+                                    return `pH: ${Number(pH).toFixed(2)}，α: ${Number(alpha).toFixed(3)}`;
+                                }
+                            }
+                        },
+                        annotation: {
+                            annotations: buildDistributionIntersectionAnnotations(intersections, isPaperStyle, tab.distributionLabelPositions || {})
+                        }
+                    },
                     scales: {
                         x: {
                             type: 'linear',
+                            min: 0,
+                            max: 14,
                             title: {
                                 display: true,
-                                text: chartLabels.xSingle,
+                                text: 'pH',
                                 color: natureColors.text,
                                 font: { size: isPaperStyle ? 18 : 12, weight: '600' }
                             },
@@ -4834,17 +5201,18 @@
                             }
                         },
                         y: {
+                            min: 0,
+                            max: 1,
                             title: {
                                 display: true,
-                                text: chartLabels.y,
+                                text: '分布分数 α',
                                 color: natureColors.text,
                                 font: { size: isPaperStyle ? 18 : 12, weight: '600' }
                             },
-                            min: 0,
-                            max: 14,
                             ticks: {
                                 color: natureColors.textSecondary,
-                                font: { size: isPaperStyle ? 16 : 11 }
+                                font: { size: isPaperStyle ? 16 : 11 },
+                                callback: value => Number(value).toFixed(1)
                             },
                             grid: {
                                 color: natureColors.grid,
@@ -4855,9 +5223,159 @@
                     }
                 }
             });
-            refreshTabAnnotations(tab);
-            if (tab.showDerivative) {
-                updateDerivativeChart(tab, volumes, phs, color, style);
+            attachDistributionLabelDrag(canvas, tab);
+        }
+
+        const distributionLabelDragState = {
+            active: false,
+            tabId: null,
+            key: null,
+            startX: 0,
+            startY: 0,
+            startXAdjust: 0,
+            startYAdjust: 0
+        };
+
+        function getDistributionCanvasPosition(chart, event) {
+            const rect = chart.canvas.getBoundingClientRect();
+            return {
+                x: event.clientX - rect.left,
+                y: event.clientY - rect.top
+            };
+        }
+
+        function getDistributionLabelLayout(tab, point, index) {
+            const chart = tab.distributionChart;
+            if (!chart || !chart.scales || !chart.scales.x || !chart.scales.y) return null;
+            const key = point.key || `dist-${index}`;
+            const labelText = `(${point.pH.toFixed(2)}, ${point.alpha.toFixed(2)})`;
+            const offset = (tab.distributionLabelPositions && tab.distributionLabelPositions[key])
+                || getDistributionLabelDefaultOffset(point, index);
+            const xPixel = chart.scales.x.getPixelForValue(point.pH);
+            const yPixel = chart.scales.y.getPixelForValue(point.alpha);
+            const ctx = chart.ctx;
+            let textWidth = labelText.length * 7;
+            if (ctx && ctx.save) {
+                ctx.save();
+                ctx.font = `${chartStyle === 'paper' ? 13 : 11}px ${Chart.defaults.font && Chart.defaults.font.family ? Chart.defaults.font.family : 'sans-serif'}`;
+                textWidth = ctx.measureText(labelText).width;
+                ctx.restore();
+            }
+            const width = Math.ceil(textWidth) + 18;
+            const height = chartStyle === 'paper' ? 24 : 22;
+            const centerX = xPixel + offset.xAdjust;
+            const centerY = yPixel + offset.yAdjust;
+            return {
+                key,
+                labelText,
+                xAdjust: offset.xAdjust,
+                yAdjust: offset.yAdjust,
+                bounds: {
+                    left: centerX - width / 2,
+                    right: centerX + width / 2,
+                    top: centerY - height / 2,
+                    bottom: centerY + height / 2
+                }
+            };
+        }
+
+        function findDistributionLabelAtPosition(tab, event) {
+            if (!tab || !tab.distributionChart) return null;
+            const pos = getDistributionCanvasPosition(tab.distributionChart, event);
+            const intersections = buildDistributionIntersections(tab);
+            for (let i = intersections.length - 1; i >= 0; i--) {
+                const layout = getDistributionLabelLayout(tab, intersections[i], i);
+                if (!layout) continue;
+                const { bounds } = layout;
+                if (pos.x >= bounds.left && pos.x <= bounds.right && pos.y >= bounds.top && pos.y <= bounds.bottom) {
+                    return layout;
+                }
+            }
+            return null;
+        }
+
+        function refreshDistributionAnnotations(tab) {
+            if (!tab || !tab.distributionChart) return;
+            const intersections = buildDistributionIntersections(tab);
+            const isPaperStyle = chartStyle === 'paper';
+            tab.distributionChart.options.plugins.annotation.annotations =
+                buildDistributionIntersectionAnnotations(intersections, isPaperStyle, tab.distributionLabelPositions || {});
+            tab.distributionChart.update('none');
+        }
+
+        function startDistributionLabelDrag(event, tab, label) {
+            if (!tab || !label) return;
+            distributionLabelDragState.active = true;
+            distributionLabelDragState.tabId = tab.id;
+            distributionLabelDragState.key = label.key;
+            distributionLabelDragState.startX = event.clientX;
+            distributionLabelDragState.startY = event.clientY;
+            distributionLabelDragState.startXAdjust = label.xAdjust;
+            distributionLabelDragState.startYAdjust = label.yAdjust;
+            if (tab.distributionChart && tab.distributionChart.canvas) {
+                tab.distributionChart.canvas.style.cursor = 'grabbing';
+                if (tab.distributionChart.canvas.setPointerCapture && event.pointerId !== undefined) {
+                    tab.distributionChart.canvas.setPointerCapture(event.pointerId);
+                }
+            }
+        }
+
+        function moveDistributionLabel(event, tab) {
+            if (!distributionLabelDragState.active || !tab || distributionLabelDragState.tabId !== tab.id) return;
+            const dx = event.clientX - distributionLabelDragState.startX;
+            const dy = event.clientY - distributionLabelDragState.startY;
+            if (!tab.distributionLabelPositions) tab.distributionLabelPositions = {};
+            tab.distributionLabelPositions[distributionLabelDragState.key] = {
+                xAdjust: distributionLabelDragState.startXAdjust + dx,
+                yAdjust: distributionLabelDragState.startYAdjust + dy
+            };
+            refreshDistributionAnnotations(tab);
+        }
+
+        function endDistributionLabelDrag(event, tab) {
+            if (!distributionLabelDragState.active) return;
+            distributionLabelDragState.active = false;
+            if (tab && tab.distributionChart && tab.distributionChart.canvas) {
+                tab.distributionChart.canvas.style.cursor = 'default';
+                if (tab.distributionChart.canvas.releasePointerCapture && event && event.pointerId !== undefined) {
+                    try { tab.distributionChart.canvas.releasePointerCapture(event.pointerId); } catch (e) {}
+                }
+            }
+        }
+
+        function attachDistributionLabelDrag(canvas, tab) {
+            if (!canvas || canvas.dataset.distributionLabelDragAttached === 'true') return;
+            canvas.addEventListener('pointerdown', (event) => {
+                const label = findDistributionLabelAtPosition(tab, event);
+                if (!label) return;
+                event.preventDefault();
+                startDistributionLabelDrag(event, tab, label);
+            });
+            canvas.addEventListener('pointermove', (event) => {
+                if (distributionLabelDragState.active && distributionLabelDragState.tabId === tab.id) {
+                    event.preventDefault();
+                    moveDistributionLabel(event, tab);
+                    return;
+                }
+                const label = findDistributionLabelAtPosition(tab, event);
+                canvas.style.cursor = label ? 'grab' : 'default';
+            });
+            canvas.addEventListener('pointerup', (event) => endDistributionLabelDrag(event, tab));
+            canvas.addEventListener('pointerleave', (event) => endDistributionLabelDrag(event, tab));
+            canvas.addEventListener('pointercancel', (event) => endDistributionLabelDrag(event, tab));
+            canvas.dataset.distributionLabelDragAttached = 'true';
+        }
+
+        function hideDistributionChart(tab) {
+            if (!tab) return;
+            const pane = getTabContent(tab);
+            const wrapper = pane ? pane.querySelector('.distribution-chart-wrapper') : null;
+            if (wrapper) {
+                wrapper.style.display = 'none';
+            }
+            if (tab.distributionChart) {
+                tab.distributionChart.destroy();
+                tab.distributionChart = null;
             }
         }
 
@@ -5163,6 +5681,10 @@
             return colors[index % colors.length];
         }
 
+        function isSelectableChartDataset(dataset) {
+            return dataset && !dataset.isDistributionDataset && (!dataset.yAxisID || dataset.yAxisID === 'y');
+        }
+
         function normalizeDatasetPoint(chart, dataset, index) {
             const point = dataset.data[index];
             if (point && typeof point === 'object') {
@@ -5234,6 +5756,7 @@
             let best = null;
             let bestDistance = Infinity;
             chart.data.datasets.forEach((dataset, datasetIndex) => {
+                if (!isSelectableChartDataset(dataset)) return;
                 const points = getDatasetPoints(chart, dataset);
                 const interpolated = interpolatePoint(points, xValue);
                 if (!interpolated) return;
@@ -5263,7 +5786,14 @@
             const { x: mouseX, y: mouseY } = getCanvasPosition(chart, event);
             const elements = chart.getElementsAtEventForMode(event, 'nearest', { intersect: true }, true);
             if (elements && elements.length > 0) {
-                const { datasetIndex, index } = elements[0];
+                const element = elements.find(item => {
+                    const dataset = chart.data.datasets[item.datasetIndex];
+                    return isSelectableChartDataset(dataset);
+                });
+                if (!element) {
+                    return allowFitted ? getFittedPointFromEvent(chart, event) : null;
+                }
+                const { datasetIndex, index } = element;
                 const dataset = chart.data.datasets[datasetIndex];
                 const normalized = normalizeDatasetPoint(chart, dataset, index);
                 if (!normalized) return null;
@@ -5918,8 +6448,10 @@
                 solution: JSON.parse(JSON.stringify(cfg.solution)),
                 titrant: JSON.parse(JSON.stringify(cfg.titrant)),
                 maxVolume: cfg.maxVolume,
+                volumeIncrement: cfg.volumeIncrement,
                 sampleCount: cfg.sampleCount,
                 curveColor: cfg.curveColor,
+                curveStyle: cfg.curveStyle || 'solid',
                 curveName: cfg.curveName
             };
         }
@@ -6404,20 +6936,32 @@
             if (!tab) return;
             const pane = getTabContent(tab);
             if (!pane) return;
-            const wrapper = pane.querySelector('.chart-wrapper') || pane.querySelector('.chart-container-with-indicator .chart-wrapper');
+            const wrapper = pane.querySelector('.chart-stack') || pane.querySelector('.chart-wrapper') || pane.querySelector('.chart-container-with-indicator .chart-wrapper');
+            const mainWrapper = pane.querySelector('.chart-wrapper');
             if (!wrapper) return;
             const width = parseInt(value, 10);
 
             if (Number.isFinite(width) && width > 0) {
                 wrapper.style.setProperty('--chart-custom-width', `${width}px`);
                 wrapper.classList.add('custom-width');
+                if (mainWrapper && mainWrapper !== wrapper) {
+                    mainWrapper.style.setProperty('--chart-custom-width', '100%');
+                    mainWrapper.classList.remove('custom-width');
+                }
             } else {
                 wrapper.style.setProperty('--chart-custom-width', '100%');
                 wrapper.classList.remove('custom-width');
+                if (mainWrapper && mainWrapper !== wrapper) {
+                    mainWrapper.style.setProperty('--chart-custom-width', '100%');
+                    mainWrapper.classList.remove('custom-width');
+                }
             }
 
             if (tab.chart) {
                 tab.chart.resize();
+            }
+            if (tab.distributionChart) {
+                tab.distributionChart.resize();
             }
         }
 
@@ -6707,7 +7251,7 @@
                 const isZh = uiLanguage === 'zh';
                 
                 const helpHTML = isZh ? `
-                    <h2>酸碱滴定S型曲线绘图程序（ATSC-Plot ）4.0.1 - 操作指南</h2>
+                    <h2>酸碱滴定S型曲线绘图程序（ATSC-Plot ）5.0.0 - 操作指南</h2>
                     <h3>程序开发：
                      <h3>    成都七中高2023级学生  乔家祺</h3>
                      <h3>    成都七中化学教师  叶昌平</h3>
@@ -6792,43 +7336,47 @@
                         5. 在任何情况下，作者均不对用户因使用或误用该程序所产生的任何责任负责。若您接受上述条款与条件，即有权免费无限期、无次数限制地使用该程序。作者欢迎您访问“启迪化学”微信公众号获取更多信息或通过电子邮件 393392477@qq.com 提供反馈意见、错误报告及建议。
                     </p>
                 ` : `
-                    <h2>Acid-Base Titration Calculator - User Guide</h2>
+                    <h2>Acid-Base Titration S-Curve Plotting Program (ATSC-Plot) 5.0.0 - User Guide</h2>
+                    
+                    <h3>Program Development:</h3>
+                    <h3>    Qiao Jiaqi, Class of 2023, Chengdu No.7 High School</h3>
+                    <h3>    Ye Changping, Chemistry Teacher, Chengdu No.7 High School</h3>
                     
                     <h3>1. Interface Overview</h3>
-                    <p>The main interface consists of:</p>
+                    <p>The main interface of this program is divided into the following areas:</p>
                     <ul>
-                        <li><strong>Top Control Bar</strong>: Theme toggle (dark/light), style toggle, language toggle (EN/中文), help button</li>
-                        <li><strong>Left Control Panel</strong>: Configure titration parameters, add acid/base components</li>
-                        <li><strong>Right/Center Chart Area</strong>: Display titration curve, data table, key point information</li>
+                        <li><strong>Top Control Bar</strong>: Includes dark/light mode toggle, style toggle (Chinese/English), help button</li>
+                        <li><strong>Left Control Panel</strong>: Set titration parameters, add acid/base components</li>
+                        <li><strong>Right/Center Chart Area</strong>: Display titration curves, data tables, key point information</li>
                     </ul>
                     
                     <h3>2. Basic Settings</h3>
-                    <p>Configure these basic parameters before calculation:</p>
+                    <p>Before starting the calculation, you need to connect to the internet and configure the following basic parameters:</p>
                     <ul>
                         <li><strong>Titration Direction</strong>: Choose "Acid Titrate Base" or "Base Titrate Acid"</li>
-                        <li><strong>Initial Volume (V₀)</strong>: Initial volume of the solution in mL (default 25mL)</li>
-                        <li><strong>Maximum Volume</strong>: Maximum titrant volume to add in mL</li>
-                        <li><strong>Sample Points</strong>: Calculation precision - higher values produce smoother curves (recommended 200-500)</li>
+                        <li><strong>Initial Volume (V₀)</strong>: Initial volume of the solution to be measured, unit mL, default 20mL</li>
+                        <li><strong>Maximum Titrant Volume</strong>: Maximum volume added during titration, unit mL, default 40mL</li>
+                        <li><strong>Volume Increment</strong>: Volume of solution added each time during titration, unit mL, default 0.01mL/step</li>
                     </ul>
                     
                     <h3>3. Adding Acid/Base Components</h3>
-                    <p>Add acids or bases in the "Solution Components" and "Titrant Components" sections:</p>
+                    <p>You can add acids or bases in the "Solution to be Measured" and "Standard Solution" areas:</p>
                     <ul>
-                        <li>Click <strong>+ Add Acid</strong> or <strong>+ Add Base</strong> button</li>
-                        <li>Choose from preset common acids/bases (e.g., HCl, NaOH, CH₃COOH)</li>
+                        <li>Click the <strong>+ Add Acid/Base Component</strong> button</li>
+                        <li>Select from preset list of common acids/bases (such as HCl, NaOH, CH₃COOH, etc.)</li>
                         <li>Or select "Manual Setup" for custom parameters</li>
                         <li>Set concentration (mol/L) and ionization constants (pKa/pKb)</li>
-                        <li><strong>Polyprotic acids/bases</strong>: Set multiple ionization constants (comma-separated), e.g., phosphoric acid pKa1=2.12, pKa2=7.21, pKa3=12.67</li>
-                        <li><strong>Charge number</strong>: Set ionic charge (default 1)</li>
+                        <li><strong>Polyprotic Weak Acids/Bases</strong>: Multiple ionization constants can be set, e.g., phosphoric acid pKa1=2.12, pKa2=7.21, pKa3=12.67</li>
+                        <li><strong>Valence</strong>: Set the valence of acid/base (default 1)</li>
                     </ul>
                     
                     <h3>4. Viewing Results</h3>
-                    <p>After configuration, the titration curve will be displayed automatically:</p>
+                    <p>After configuration, click to generate the titration curve and it will be displayed automatically:</p>
                     <ul>
-                        <li><strong>Curve Chart</strong>: Shows pH vs titrant volume curve</li>
-                        <li><strong>Data Table</strong>: Shows specific values for each point (volume, pH, derivative)</li>
-                        <li><strong>Key Points</strong>: Automatically marks jump range and stoichiometric points</li>
-                        <li><strong>Parameters</strong>: Displays detailed configuration information</li>
+                        <li><strong>Curve Chart</strong>: Shows pH vs titrant volume curve calculated from charge balance equation and distribution fraction formula</li>
+                        <li><strong>Data Table</strong>: Displays specific values for each point (volume, pH, etc.)</li>
+                        <li><strong>Point Annotation</strong>: Input volume or pH value to select point and annotate it on the chart</li>
+                        <li><strong>Calculate pH Jump Range</strong>: When volume increment is set to 0.01mL, calculate pH jump range based on equivalent volume ± equivalent volume × 0.1%</li>
                     </ul>
                     
                     <h3>5. Export Features</h3>
@@ -6836,30 +7384,28 @@
                     <ul>
                         <li><strong>Download Chart</strong>: Export curve as PNG/JPG image with adjustable resolution</li>
                         <li><strong>Generate Mathematica Code</strong>: Export code for Mathematica calculation with complete root-finding logic</li>
-                        <li><strong>Generate Titration Equation</strong>: Display equation based on charge balance in LaTeX format</li>
                     </ul>
                     
                     <h3>6. Multi-Curve Comparison</h3>
-                    <p>Compare multiple titration curves simultaneously:</p>
+                    <p>Support displaying multiple titration curves simultaneously for comparison:</p>
                     <ul>
                         <li>Click <strong>Add Curve</strong> to create new curve configuration</li>
                         <li>Check which curves to display in multi-curve chart</li>
-                        <li>Customize color and line width for each curve</li>
-                        <li>Export Mathematica code for multiple curves at once</li>
+                        <li>Adjust color for each curve</li>
+                        <li>Support exporting Mathematica code for multiple curves simultaneously</li>
                     </ul>
                     
                     <h3>7. Interactive Operations</h3>
                     <ul>
-                        <li><strong>Hover Preview</strong>: Hover over curve to see detailed values (volume, pH, derivative, buffer index)</li>
-                        <li><strong>Mark Key Points</strong>: <strong>Long press for ~0.7 seconds</strong> on curve to add/remove permanent markers</li>
-                        <li><strong>Adjust Chart Width</strong>: Customize chart display width in pixels</li>
-                        <li><strong>Chart Style</strong>: Switch between "Paper Style" and "Standard Style"</li>
-                        <li><strong>Navigate by Volume</strong>: Input volume value to quickly locate corresponding point on curve</li>
+                        <li><strong>Hover Preview</strong>: Mouse over the curve to display detailed values (volume, pH, etc.)</li>
+                        <li><strong>Mark Key Points</strong>: <strong>Long press for ~0.7 seconds</strong> on the curve to add/remove permanent markers</li>
+                        <li><strong>Adjust Chart Width</strong>: Customize chart display width via input box (pixels)</li>
+                        <li><strong>Select Chart Style</strong>: Switch between "Paper Style" and "Standard Style"</li>
                         <li><strong>Show Raw Data Points</strong>: Toggle visibility of raw calculation data points</li>
                     </ul>
                     
                     <h3>8. Preset Acid/Base Library</h3>
-                    <p>The program includes rich preset acids and bases:</p>
+                    <p>The program includes a rich library of preset common acids and bases:</p>
                     <ul>
                         <li><strong>Strong Acids</strong>: Hydrochloric acid (HCl), Nitric acid (HNO₃), Perchloric acid (HClO₄)</li>
                         <li><strong>Weak Acids</strong>: Acetic acid (CH₃COOH), Carbonic acid (H₂CO₃), Phosphoric acid (H₃PO₄), Hydrofluoric acid (HF)</li>
@@ -7125,4 +7671,3 @@
     </script>
 </body>
 </html>
-
